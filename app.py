@@ -9,6 +9,14 @@ CORS(app)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "schedule.json")
 
+ARCHIVE_FILE = os.path.join(BASE_DIR, "archive.json")
+
+# jeśli plik archiwum nie istnieje – utwórz
+if not os.path.exists(ARCHIVE_FILE):
+    with open(ARCHIVE_FILE, "w", encoding="utf8") as f:
+        json.dump([], f, indent=4)
+
+
 # ────────────────────────────────────────────────
 #  JEŚLI schedule.json NIE ISTNIEJE → UTWÓRZ
 # ────────────────────────────────────────────────
@@ -110,6 +118,46 @@ def delete_schedule():
         json.dump(new_schedule, f, indent=4)
 
     return jsonify({"status": "deleted", "id": case_id})
+
+@app.post("/api/archive_case")
+def archive_case():
+    data = request.json
+    case_id = data.get("id")
+
+    if not case_id:
+        return jsonify({"status": "error", "info": "missing id"}), 400
+
+    # Wczytaj aktywne rozprawy
+    with open(DATA_FILE, "r", encoding="utf8") as f:
+        schedule = json.load(f)
+
+    # Znajdź sprawę
+    found = None
+    new_schedule = []
+    for s in schedule:
+        if s["id"] == case_id:
+            found = s
+        else:
+            new_schedule.append(s)
+
+    if not found:
+        return jsonify({"status": "not_found"}), 404
+
+    # Wczytaj archiwum
+    with open(ARCHIVE_FILE, "r", encoding="utf8") as f:
+        archive = json.load(f)
+
+    archive.append(found)
+
+    # Zapisz archiwum
+    with open(ARCHIVE_FILE, "w", encoding="utf8") as f:
+        json.dump(archive, f, indent=4)
+
+    # Zapisz aktywne bez tej sprawy
+    with open(DATA_FILE, "w", encoding="utf8") as f:
+        json.dump(new_schedule, f, indent=4)
+
+    return jsonify({"status": "archived", "id": case_id})
 
 
 # ────────────────────────────────────────────────
