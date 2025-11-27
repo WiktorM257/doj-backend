@@ -1,5 +1,8 @@
 from flask import Flask, request, jsonify, send_file
 import json, os, time
+from flask_cors import CORS
+CORS(app)
+
 
 app = Flask(__name__)
 
