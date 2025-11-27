@@ -3,14 +3,16 @@ from flask_cors import CORS
 import json, os, time
 
 app = Flask(__name__)
-CORS(app)  # 🔥 najważniejsza linia
+CORS(app)   # 🔥 Dopiero tutaj!
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "schedule.json")
 
+# Jeśli nie ma pliku -> utwórz pusty
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump([], f, indent=4)
+
 
 @app.post("/api/add_schedule")
 def add_schedule():
@@ -50,5 +52,6 @@ def serve_schedule():
     return send_file(DATA_FILE)
 
 
+# WYMAGANE PRZEZ RENDER
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
