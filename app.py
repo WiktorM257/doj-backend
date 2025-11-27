@@ -3,31 +3,30 @@ from flask_cors import CORS
 import json, os
 from datetime import datetime
 
+# --------------------------------------
+#  FLASK APP
+# --------------------------------------
 app = Flask(__name__)
 CORS(app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "schedule.json")
-
 ARCHIVE_FILE = os.path.join(BASE_DIR, "archive.json")
 
-# jeśli plik archiwum nie istnieje – utwórz
-if not os.path.exists(ARCHIVE_FILE):
-    with open(ARCHIVE_FILE, "w", encoding="utf8") as f:
-        json.dump([], f, indent=4)
-
-
-# ────────────────────────────────────────────────
-#  JEŚLI schedule.json NIE ISTNIEJE → UTWÓRZ
-# ────────────────────────────────────────────────
+# --------------------------------------
+#  INITIALIZE FILES IF MISSING
+# --------------------------------------
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump([], f, indent=4)
 
+if not os.path.exists(ARCHIVE_FILE):
+    with open(ARCHIVE_FILE, "w", encoding="utf8") as f:
+        json.dump([], f, indent=4)
 
-# ────────────────────────────────────────────────
-#  GENERATOR ID: SA-2025-0001 -> SA-2025-9999
-# ────────────────────────────────────────────────
+# --------------------------------------
+#  GENERATOR ID: SA-2025-0001 →
+# --------------------------------------
 def generate_case_id(existing_cases):
     year = datetime.now().year
     prefix = f"SA-{year}-"
@@ -42,30 +41,27 @@ def generate_case_id(existing_cases):
                 pass
 
     next_number = max(nums) + 1 if nums else 1
-
     return f"{prefix}{next_number:04d}"
 
 
-# ────────────────────────────────────────────────
-#  API: DODAWANIE NOWEJ ROZPRAWY
-# ────────────────────────────────────────────────
+# --------------------------------------
+#  API: ADD NEW SCHEDULE ENTRY
+# --------------------------------------
 @app.post("/api/add_schedule")
 def add_schedule():
     data = request.json
 
-    # wczytaj istniejące rozprawy
     try:
         with open(DATA_FILE, "r", encoding="utf8") as f:
             schedule = json.load(f)
     except:
         schedule = []
 
-    # utwórz nowy wpis
     entry = {
         "id": generate_case_id(schedule),
         "name": data.get("name"),
         "judge": data.get("judge"),
-        "prosecutor": data.get("prosecutor"),
+        "prosecutor": data.get("prosecutor"),     # oskarżyciel
         "defendant": data.get("defendant"),
         "lawyer": data.get("lawyer"),
         "witnesses": data.get("witnesses"),
@@ -78,24 +74,23 @@ def add_schedule():
 
     schedule.append(entry)
 
-    # zapis
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump(schedule, f, indent=4)
 
     return jsonify({"status": "ok", "added": entry})
 
 
-# ────────────────────────────────────────────────
-#  API: POBIERANIE WSZYSTKICH ROZPRAW
-# ────────────────────────────────────────────────
+# --------------------------------------
+#  API: GET ALL SCHEDULE ENTRIES
+# --------------------------------------
 @app.get("/schedule.json")
 def serve_schedule():
     return send_file(DATA_FILE)
 
 
-# ────────────────────────────────────────────────
-#  API: USUWANIE ROZPRAWY PO ID (do slash command)
-# ────────────────────────────────────────────────
+# --------------------------------------
+#  API: DELETE SCHEDULE ENTRY BY ID
+# --------------------------------------
 @app.post("/api/delete_schedule")
 def delete_schedule():
     data = request.json
@@ -109,16 +104,18 @@ def delete_schedule():
 
     new_schedule = [s for s in schedule if s["id"] != case_id]
 
-    # brak takiego ID
     if len(new_schedule) == len(schedule):
         return jsonify({"status": "not_found"}), 404
 
-    # zapisz po usunięciu
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump(new_schedule, f, indent=4)
 
     return jsonify({"status": "deleted", "id": case_id})
 
+
+# --------------------------------------
+#  API: ARCHIVE CASE
+# --------------------------------------
 @app.post("/api/archive_case")
 def archive_case():
     data = request.json
@@ -127,11 +124,10 @@ def archive_case():
     if not case_id:
         return jsonify({"status": "error", "info": "missing id"}), 400
 
-    # Wczytaj aktywne rozprawy
+    # Load active schedule
     with open(DATA_FILE, "r", encoding="utf8") as f:
         schedule = json.load(f)
 
-    # Znajdź sprawę
     found = None
     new_schedule = []
     for s in schedule:
@@ -143,29 +139,38 @@ def archive_case():
     if not found:
         return jsonify({"status": "not_found"}), 404
 
-    # Wczytaj archiwum
+    # Load archive
     with open(ARCHIVE_FILE, "r", encoding="utf8") as f:
         archive = json.load(f)
 
-    found["result"] = data.get("result")           # winny / niewinny / ugoda
-    found["verdict"] = data.get("verdict")         # treść wyroku
-    found["document"] = data.get("document") 
+    # Add extra fields for archive
+    found["result"] = data.get("result")      # winny/niewinny/ugoda
+    found["verdict"] = data.get("verdict")    # opis wyroku
+    found["document"] = data.get("document")  # link PDF
+
     archive.append(found)
 
-    # Zapisz archiwum
+    # Save archive
     with open(ARCHIVE_FILE, "w", encoding="utf8") as f:
         json.dump(archive, f, indent=4)
 
-    # Zapisz aktywne bez tej sprawy
+    # Save schedule without removed case
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump(new_schedule, f, indent=4)
 
     return jsonify({"status": "archived", "id": case_id})
 
 
-# ────────────────────────────────────────────────
-#  URUCHOMIENIE
-# ────────────────────────────────────────────────
+# --------------------------------------
+#  API: GET ARCHIVE
+# --------------------------------------
+@app.get("/archive.json")
+def serve_archive():
+    return send_file(ARCHIVE_FILE)
+
+
+# --------------------------------------
+#  RUN LOCAL OR ON RENDER
+# --------------------------------------
 if __name__ == "__main__":
-    # lokalnie
     app.run(host="0.0.0.0", port=5000)
