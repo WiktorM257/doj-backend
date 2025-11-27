@@ -1,16 +1,13 @@
 from flask import Flask, request, jsonify, send_file
-import json, os, time
 from flask_cors import CORS
-CORS(app)
-
+import json, os, time
 
 app = Flask(__name__)
+CORS(app)  # 🔥 najważniejsza linia
 
-# Pełna ścieżka do pliku
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "schedule.json")
 
-# Jeśli plik nie istnieje – utwórz pusty
 if not os.path.exists(DATA_FILE):
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump([], f, indent=4)
@@ -47,19 +44,11 @@ def add_schedule():
 
     return jsonify({"status": "ok", "added": entry})
 
-@app.post("/api/overwrite")
-def overwrite():
-    data = request.json
-    with open(DATA_FILE, "w", encoding="utf8") as f:
-        json.dump(data, f, indent=4)
-    return jsonify({"status": "ok"})
 
-
-# ✔ POPRAWNY ROUTE – działa zawsze
 @app.get("/schedule.json")
 def serve_schedule():
     return send_file(DATA_FILE)
 
-# ✔ POPRAWNE URUCHAMIANIE
+
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
