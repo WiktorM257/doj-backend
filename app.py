@@ -147,6 +147,9 @@ def archive_case():
     with open(ARCHIVE_FILE, "r", encoding="utf8") as f:
         archive = json.load(f)
 
+    found["result"] = data.get("result")           # winny / niewinny / ugoda
+    found["verdict"] = data.get("verdict")         # treść wyroku
+    found["document"] = data.get("document") 
     archive.append(found)
 
     # Zapisz archiwum
