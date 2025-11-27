@@ -44,6 +44,14 @@ def add_schedule():
 
     return jsonify({"status": "ok", "added": entry})
 
+@app.post("/api/overwrite")
+def overwrite():
+    data = request.json
+    with open(DATA_FILE, "w", encoding="utf8") as f:
+        json.dump(data, f, indent=4)
+    return jsonify({"status": "ok"})
+
+
 # ✔ POPRAWNY ROUTE – działa zawsze
 @app.get("/schedule.json")
 def serve_schedule():
