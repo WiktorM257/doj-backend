@@ -136,6 +136,13 @@ def get_archive():
 
     return jsonify([dict(r) for r in rows])
 
+@app.get("/init-db")
+def init_db_route():
+    try:
+        init_db()
+        return jsonify({"status": "ok", "message": "Database initialized"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # --------------------------------------
 # RUN
