@@ -14,6 +14,30 @@ DATA_FILE = os.path.join(BASE_DIR, "schedule.json")
 ARCHIVE_FILE = os.path.join(BASE_DIR, "archive.json")
 
 # --------------------------------------
+#  BACKUP DIRECTORY
+# --------------------------------------
+BACKUP_DIR = os.path.join(BASE_DIR, "backups")
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
+def save_backup():
+    """Tworzy kopię zapasową schedule.json w osobnym pliku."""
+    try:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        backup_path = os.path.join(BACKUP_DIR, f"schedule_backup_{timestamp}.json")
+
+        with open(DATA_FILE, "r", encoding="utf8") as src:
+            data = json.load(src)
+
+        with open(backup_path, "w", encoding="utf8") as dst:
+            json.dump(data, dst, indent=4)
+
+        print(f"[BACKUP] Utworzono kopię: {backup_path}")
+
+    except Exception as e:
+        print("[BACKUP ERROR]", e)
+
+
+# --------------------------------------
 #  INITIALIZE FILES IF MISSING
 # --------------------------------------
 if not os.path.exists(DATA_FILE):
@@ -23,6 +47,7 @@ if not os.path.exists(DATA_FILE):
 if not os.path.exists(ARCHIVE_FILE):
     with open(ARCHIVE_FILE, "w", encoding="utf8") as f:
         json.dump([], f, indent=4)
+
 
 # --------------------------------------
 #  GENERATOR ID: SA-2025-0001 →
@@ -61,7 +86,7 @@ def add_schedule():
         "id": generate_case_id(schedule),
         "name": data.get("name"),
         "judge": data.get("judge"),
-        "prosecutor": data.get("prosecutor"),     # oskarżyciel
+        "prosecutor": data.get("prosecutor"),
         "defendant": data.get("defendant"),
         "lawyer": data.get("lawyer"),
         "witnesses": data.get("witnesses"),
@@ -74,8 +99,11 @@ def add_schedule():
 
     schedule.append(entry)
 
+    # save main schedule
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump(schedule, f, indent=4)
+
+    save_backup()  # ⬅ AUTOMATYCZNY BACKUP
 
     return jsonify({"status": "ok", "added": entry})
 
@@ -109,6 +137,8 @@ def delete_schedule():
 
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump(new_schedule, f, indent=4)
+
+    save_backup()  # ⬅ BACKUP PO USUNIĘCIU
 
     return jsonify({"status": "deleted", "id": case_id})
 
@@ -144,9 +174,9 @@ def archive_case():
         archive = json.load(f)
 
     # Add extra fields for archive
-    found["result"] = data.get("result")      # winny/niewinny/ugoda
-    found["verdict"] = data.get("verdict")    # opis wyroku
-    found["document"] = data.get("document")  # link PDF
+    found["result"] = data.get("result")
+    found["verdict"] = data.get("verdict")
+    found["document"] = data.get("document")
 
     archive.append(found)
 
@@ -154,9 +184,11 @@ def archive_case():
     with open(ARCHIVE_FILE, "w", encoding="utf8") as f:
         json.dump(archive, f, indent=4)
 
-    # Save schedule without removed case
+    # Save schedule
     with open(DATA_FILE, "w", encoding="utf8") as f:
         json.dump(new_schedule, f, indent=4)
+
+    save_backup()  # ⬅ BACKUP PO ARCHIWIZACJI
 
     return jsonify({"status": "archived", "id": case_id})
 
