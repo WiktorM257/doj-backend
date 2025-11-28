@@ -1,208 +1,171 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-import json, os
 from datetime import datetime
+from database import get_db, init_db
 
-# --------------------------------------
-#  FLASK APP
-# --------------------------------------
 app = Flask(__name__)
 CORS(app)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_FILE = os.path.join(BASE_DIR, "schedule.json")
-ARCHIVE_FILE = os.path.join(BASE_DIR, "archive.json")
+# Inicjalizacja bazy przy starcie
+init_db()
 
 # --------------------------------------
-#  BACKUP DIRECTORY
+# GENERATOR ID
 # --------------------------------------
-BACKUP_DIR = os.path.join(BASE_DIR, "backups")
-os.makedirs(BACKUP_DIR, exist_ok=True)
-
-def save_backup():
-    """Tworzy kopię zapasową schedule.json w osobnym pliku."""
-    try:
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        backup_path = os.path.join(BACKUP_DIR, f"schedule_backup_{timestamp}.json")
-
-        with open(DATA_FILE, "r", encoding="utf8") as src:
-            data = json.load(src)
-
-        with open(backup_path, "w", encoding="utf8") as dst:
-            json.dump(data, dst, indent=4)
-
-        print(f"[BACKUP] Utworzono kopię: {backup_path}")
-
-    except Exception as e:
-        print("[BACKUP ERROR]", e)
-
-
-# --------------------------------------
-#  INITIALIZE FILES IF MISSING
-# --------------------------------------
-if not os.path.exists(DATA_FILE):
-    with open(DATA_FILE, "w", encoding="utf8") as f:
-        json.dump([], f, indent=4)
-
-if not os.path.exists(ARCHIVE_FILE):
-    with open(ARCHIVE_FILE, "w", encoding="utf8") as f:
-        json.dump([], f, indent=4)
-
-
-# --------------------------------------
-#  GENERATOR ID: SA-2025-0001 →
-# --------------------------------------
-def generate_case_id(existing_cases):
+def generate_case_id():
     year = datetime.now().year
     prefix = f"SA-{year}-"
 
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("SELECT id FROM schedule WHERE id LIKE ?", (f"{prefix}%",))
+    ids = c.fetchall()
+
     nums = []
-    for c in existing_cases:
-        cid = c.get("id", "")
-        if cid.startswith(prefix):
-            try:
-                nums.append(int(cid.split("-")[-1]))
-            except:
-                pass
+    for row in ids:
+        try:
+            nums.append(int(row["id"].split("-")[-1]))
+        except:
+            pass
 
     next_number = max(nums) + 1 if nums else 1
     return f"{prefix}{next_number:04d}"
 
 
 # --------------------------------------
-#  API: ADD NEW SCHEDULE ENTRY
+# API: ADD NEW SCHEDULE ENTRY
 # --------------------------------------
 @app.post("/api/add_schedule")
 def add_schedule():
     data = request.json
+    case_id = generate_case_id()
 
-    try:
-        with open(DATA_FILE, "r", encoding="utf8") as f:
-            schedule = json.load(f)
-    except:
-        schedule = []
+    conn = get_db()
+    c = conn.cursor()
 
-    entry = {
-        "id": generate_case_id(schedule),
-        "name": data.get("name"),
-        "judge": data.get("judge"),
-        "prosecutor": data.get("prosecutor"),
-        "defendant": data.get("defendant"),
-        "lawyer": data.get("lawyer"),
-        "witnesses": data.get("witnesses"),
-        "room": data.get("room"),
-        "date": data.get("date"),
-        "time": data.get("time"),
-        "parties": data.get("parties"),
-        "description": data.get("description"),
-    }
+    c.execute("""
+        INSERT INTO schedule
+        (id, name, judge, prosecutor, defendant, lawyer, witnesses, room, date, time, parties, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        case_id,
+        data.get("name"),
+        data.get("judge"),
+        data.get("prosecutor"),
+        data.get("defendant"),
+        data.get("lawyer"),
+        data.get("witnesses"),
+        data.get("room"),
+        data.get("date"),
+        data.get("time"),
+        data.get("parties"),
+        data.get("description")
+    ))
 
-    schedule.append(entry)
+    conn.commit()
 
-    # save main schedule
-    with open(DATA_FILE, "w", encoding="utf8") as f:
-        json.dump(schedule, f, indent=4)
-
-    save_backup()  # ⬅ AUTOMATYCZNY BACKUP
-
-    return jsonify({"status": "ok", "added": entry})
+    return jsonify({"status": "ok", "added": { "id": case_id, **data }})
 
 
 # --------------------------------------
-#  API: GET ALL SCHEDULE ENTRIES
+# API: GET SCHEDULE
 # --------------------------------------
 @app.get("/schedule.json")
-def serve_schedule():
-    return send_file(DATA_FILE)
+def get_schedule():
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("SELECT * FROM schedule ORDER BY date, time")
+    rows = [dict(row) for row in c.fetchall()]
+
+    return jsonify(rows)
 
 
 # --------------------------------------
-#  API: DELETE SCHEDULE ENTRY BY ID
+# API: DELETE SCHEDULE ENTRY
 # --------------------------------------
 @app.post("/api/delete_schedule")
 def delete_schedule():
-    data = request.json
-    case_id = data.get("id")
+    case_id = request.json.get("id")
 
-    if not case_id:
-        return jsonify({"status": "error", "info": "missing id"}), 400
+    conn = get_db()
+    c = conn.cursor()
 
-    with open(DATA_FILE, "r", encoding="utf8") as f:
-        schedule = json.load(f)
+    c.execute("DELETE FROM schedule WHERE id = ?", (case_id,))
+    conn.commit()
 
-    new_schedule = [s for s in schedule if s["id"] != case_id]
-
-    if len(new_schedule) == len(schedule):
-        return jsonify({"status": "not_found"}), 404
-
-    with open(DATA_FILE, "w", encoding="utf8") as f:
-        json.dump(new_schedule, f, indent=4)
-
-    save_backup()  # ⬅ BACKUP PO USUNIĘCIU
-
-    return jsonify({"status": "deleted", "id": case_id})
+    return jsonify({"status": "deleted"})
 
 
 # --------------------------------------
-#  API: ARCHIVE CASE
+# API: ARCHIVE CASE
 # --------------------------------------
 @app.post("/api/archive_case")
 def archive_case():
     data = request.json
     case_id = data.get("id")
 
-    if not case_id:
-        return jsonify({"status": "error", "info": "missing id"}), 400
+    conn = get_db()
+    c = conn.cursor()
 
-    # Load active schedule
-    with open(DATA_FILE, "r", encoding="utf8") as f:
-        schedule = json.load(f)
+    # Pobierz sprawę
+    c.execute("SELECT * FROM schedule WHERE id = ?", (case_id,))
+    row = c.fetchone()
 
-    found = None
-    new_schedule = []
-    for s in schedule:
-        if s["id"] == case_id:
-            found = s
-        else:
-            new_schedule.append(s)
-
-    if not found:
+    if not row:
         return jsonify({"status": "not_found"}), 404
 
-    # Load archive
-    with open(ARCHIVE_FILE, "r", encoding="utf8") as f:
-        archive = json.load(f)
+    case = dict(row)
 
-    # Add extra fields for archive
-    found["result"] = data.get("result")
-    found["verdict"] = data.get("verdict")
-    found["document"] = data.get("document")
+    # Usuń z aktywnych
+    c.execute("DELETE FROM schedule WHERE id = ?", (case_id,))
 
-    archive.append(found)
+    # Zapisz do archiwum
+    c.execute("""
+        INSERT INTO archive
+        (id, name, judge, prosecutor, defendant, lawyer, witnesses, room, date, time,
+         parties, description, result, verdict, document)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        case_id,
+        case["name"],
+        case["judge"],
+        case["prosecutor"],
+        case["defendant"],
+        case["lawyer"],
+        case["witnesses"],
+        case["room"],
+        case["date"],
+        case["time"],
+        case["parties"],
+        case["description"],
+        data.get("result"),
+        data.get("verdict"),
+        data.get("document")
+    ))
 
-    # Save archive
-    with open(ARCHIVE_FILE, "w", encoding="utf8") as f:
-        json.dump(archive, f, indent=4)
+    conn.commit()
 
-    # Save schedule
-    with open(DATA_FILE, "w", encoding="utf8") as f:
-        json.dump(new_schedule, f, indent=4)
-
-    save_backup()  # ⬅ BACKUP PO ARCHIWIZACJI
-
-    return jsonify({"status": "archived", "id": case_id})
+    return jsonify({"status": "archived"})
 
 
 # --------------------------------------
-#  API: GET ARCHIVE
+# API: GET ARCHIVE
 # --------------------------------------
 @app.get("/archive.json")
-def serve_archive():
-    return send_file(ARCHIVE_FILE)
+def get_archive():
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("SELECT * FROM archive ORDER BY date, time")
+    rows = [dict(row) for row in c.fetchall()]
+
+    return jsonify(rows)
 
 
 # --------------------------------------
-#  RUN LOCAL OR ON RENDER
+# RUN
 # --------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
