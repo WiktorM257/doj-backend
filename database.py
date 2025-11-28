@@ -1,55 +1,56 @@
-import sqlite3
 import os
+from sqlalchemy import create_engine, text
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db")
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+if not DATABASE_URL:
+    raise Exception("DATABASE_URL is not set!")
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20
+)
 
 def init_db():
-    conn = get_db()
-    c = conn.cursor()
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS schedule (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                judge TEXT,
+                prosecutor TEXT,
+                defendant TEXT,
+                lawyer TEXT,
+                witnesses TEXT,
+                room TEXT,
+                date TEXT,
+                time TEXT,
+                parties TEXT,
+                description TEXT
+            );
+        """))
 
-    # Tabela aktywnych spraw
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS schedule (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        judge TEXT,
-        prosecutor TEXT,
-        defendant TEXT,
-        lawyer TEXT,
-        witnesses TEXT,
-        room TEXT,
-        date TEXT,
-        time TEXT,
-        parties TEXT,
-        description TEXT
-    )
-    """)
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS archive (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                judge TEXT,
+                prosecutor TEXT,
+                defendant TEXT,
+                lawyer TEXT,
+                witnesses TEXT,
+                room TEXT,
+                date TEXT,
+                time TEXT,
+                parties TEXT,
+                description TEXT,
+                result TEXT,
+                verdict TEXT,
+                document TEXT
+            );
+        """))
 
-    # Tabela archiwum
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS archive (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        judge TEXT,
-        prosecutor TEXT,
-        defendant TEXT,
-        lawyer TEXT,
-        witnesses TEXT,
-        room TEXT,
-        date TEXT,
-        time TEXT,
-        parties TEXT,
-        description TEXT,
-        result TEXT,
-        verdict TEXT,
-        document TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
+def get_conn():
+    return engine.connect()
