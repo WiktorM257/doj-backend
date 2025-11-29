@@ -1,14 +1,15 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from datetime import datetime
-from database import get_conn, init_db
 from sqlalchemy import text
+from database import get_conn, init_db
 
 app = Flask(__name__)
 CORS(app)
 
-# Init database
+# Initialize database tables on startup
 init_db()
+
 
 # --------------------------------------
 # Generate Case ID
@@ -64,9 +65,7 @@ def add_schedule():
 @app.get("/schedule.json")
 def get_schedule():
     with get_conn() as conn:
-        rows = conn.execute(text("""
-            SELECT * FROM schedule ORDER BY date, time
-        """)).fetchall()
+        rows = conn.execute(text("SELECT * FROM schedule ORDER BY date, time")).fetchall()
 
     return jsonify([dict(r) for r in rows])
 
@@ -93,7 +92,6 @@ def archive_case():
     case_id = data.get("id")
 
     with get_conn() as conn:
-
         row = conn.execute(text("""
             SELECT * FROM schedule WHERE id = :id
         """), {"id": case_id}).fetchone()
@@ -130,12 +128,14 @@ def archive_case():
 @app.get("/archive.json")
 def get_archive():
     with get_conn() as conn:
-        rows = conn.execute(text("""
-            SELECT * FROM archive ORDER BY date, time
-        """)).fetchall()
+        rows = conn.execute(text("SELECT * FROM archive ORDER BY date, time")).fetchall()
 
     return jsonify([dict(r) for r in rows])
 
+
+# --------------------------------------
+# Manual Init Endpoint
+# --------------------------------------
 @app.get("/init-db")
 def init_db_route():
     try:
@@ -143,6 +143,19 @@ def init_db_route():
         return jsonify({"status": "ok", "message": "Database initialized"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# --------------------------------------
+# Manual Create Tables Endpoint
+# --------------------------------------
+@app.get("/create-tables")
+def create_tables():
+    try:
+        init_db()
+        return jsonify({"status": "ok", "message": "Tables created"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 # --------------------------------------
 # RUN
