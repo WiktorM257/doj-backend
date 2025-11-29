@@ -7,36 +7,37 @@ from database import get_conn, init_db
 app = Flask(__name__)
 CORS(app)
 
-# Initialize database tables on startup
+# INIT DB ON START
 init_db()
 
 
-# --------------------------------------
-# Generate Case ID
-# --------------------------------------
+# ------------------------------------------------
+# GENERATE CASE ID
+# ------------------------------------------------
 def generate_case_id():
     year = datetime.now().year
     prefix = f"SA-{year}-"
 
     with get_conn() as conn:
-        result = conn.execute(text("""
-            SELECT id FROM schedule WHERE id LIKE :pfx
-        """), {"pfx": f"{prefix}%"}).fetchall()
+        rows = conn.execute(
+            text("SELECT id FROM schedule WHERE id LIKE :pfx"),
+            {"pfx": f"{prefix}%"}
+        ).fetchall()
 
     nums = []
-    for row in result:
+    for r in rows:
         try:
-            nums.append(int(row[0].split("-")[-1]))
+            nums.append(int(r[0].split("-")[-1]))
         except:
             pass
 
-    next_number = max(nums) + 1 if nums else 1
-    return f"{prefix}{next_number:04d}"
+    n = max(nums) + 1 if nums else 1
+    return f"{prefix}{n:04d}"
 
 
-# --------------------------------------
+# ------------------------------------------------
 # ADD SCHEDULE
-# --------------------------------------
+# ------------------------------------------------
 @app.post("/api/add_schedule")
 def add_schedule():
     data = request.json
@@ -51,28 +52,27 @@ def add_schedule():
                 :id, :name, :judge, :prosecutor, :defendant, :lawyer,
                 :witnesses, :room, :date, :time, :parties, :description
             )
-        """), {
-            "id": case_id,
-            **data
-        })
+        """), {"id": case_id, **data})
 
     return jsonify({"status": "ok", "added": {"id": case_id, **data}})
 
 
-# --------------------------------------
+# ------------------------------------------------
 # GET SCHEDULE
-# --------------------------------------
+# ------------------------------------------------
 @app.get("/schedule.json")
 def get_schedule():
     with get_conn() as conn:
-        rows = conn.execute(text("SELECT * FROM schedule ORDER BY date, time")).fetchall()
+        rows = conn.execute(
+            text("SELECT * FROM schedule ORDER BY date, time")
+        ).fetchall()
 
     return jsonify([dict(r) for r in rows])
 
 
-# --------------------------------------
+# ------------------------------------------------
 # DELETE SCHEDULE
-# --------------------------------------
+# ------------------------------------------------
 @app.post("/api/delete_schedule")
 def delete_schedule():
     case_id = request.json.get("id")
@@ -83,18 +83,19 @@ def delete_schedule():
     return jsonify({"status": "deleted"})
 
 
-# --------------------------------------
-# ARCHIVE CASE
-# --------------------------------------
+# ------------------------------------------------
+# ARCHIVE
+# ------------------------------------------------
 @app.post("/api/archive_case")
 def archive_case():
     data = request.json
-    case_id = data.get("id")
+    case_id = data["id"]
 
     with get_conn() as conn:
-        row = conn.execute(text("""
-            SELECT * FROM schedule WHERE id = :id
-        """), {"id": case_id}).fetchone()
+        row = conn.execute(
+            text("SELECT * FROM schedule WHERE id = :id"),
+            {"id": case_id}
+        ).fetchone()
 
         if not row:
             return jsonify({"status": "not_found"}), 404
@@ -105,15 +106,17 @@ def archive_case():
 
         conn.execute(text("""
             INSERT INTO archive (
-                id, name, judge, prosecutor, defendant, lawyer, witnesses,
-                room, date, time, parties, description, result, verdict, document
+                id, name, judge, prosecutor, defendant, lawyer,
+                witnesses, room, date, time, parties, description,
+                result, verdict, document
             ) VALUES (
-                :id, :name, :judge, :prosecutor, :defendant, :lawyer, :witnesses,
-                :room, :date, :time, :parties, :description, :result, :verdict, :document
+                :id, :name, :judge, :prosecutor, :defendant, :lawyer,
+                :witnesses, :room, :date, :time, :parties, :description,
+                :result, :verdict, :document
             )
         """), {
-            "id": case_id,
             **case,
+            "id": case_id,
             "result": data.get("result"),
             "verdict": data.get("verdict"),
             "document": data.get("document")
@@ -122,57 +125,65 @@ def archive_case():
     return jsonify({"status": "archived"})
 
 
-# --------------------------------------
+# ------------------------------------------------
 # GET ARCHIVE
-# --------------------------------------
+# ------------------------------------------------
 @app.get("/archive.json")
 def get_archive():
     with get_conn() as conn:
-        rows = conn.execute(text("SELECT * FROM archive ORDER BY date, time")).fetchall()
+        rows = conn.execute(
+            text("SELECT * FROM archive ORDER BY date, time")
+        ).fetchall()
 
     return jsonify([dict(r) for r in rows])
 
 
-# --------------------------------------
-# Manual Init Endpoint
-# --------------------------------------
-@app.get("/init-db")
-def init_db_route():
-    try:
-        init_db()
-        return jsonify({"status": "ok", "message": "Database initialized"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-# --------------------------------------
-# Manual Create Tables Endpoint
-# --------------------------------------
-@app.get("/create-tables")
-def create_tables():
-    try:
-        init_db()
-        return jsonify({"status": "ok", "message": "Tables created"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.get("/debug-columns")
-def debug_columns():
+# ------------------------------------------------
+# FORCE DROP schedule
+# ------------------------------------------------
+@app.get("/force-reset-schedule")
+def force_reset_schedule():
     try:
         with get_conn() as conn:
-            result = conn.execute(text("""
-                SELECT column_name, data_type
-                FROM information_schema.columns
-                WHERE table_name = 'schedule'
-                ORDER BY ordinal_position;
-            """)).fetchall()
-        return jsonify([dict(r) for r in result])
+            conn.execute(text("DROP TABLE IF EXISTS schedule CASCADE;"))
+            conn.commit()
+        return jsonify({"status": "ok", "message": "schedule table dropped"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# --------------------------------------
+# ------------------------------------------------
+# FORCE CREATE schedule
+# ------------------------------------------------
+@app.get("/force-create-schedule")
+def force_create_schedule():
+    try:
+        with get_conn() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS schedule (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    judge TEXT,
+                    prosecutor TEXT,
+                    defendant TEXT,
+                    lawyer TEXT,
+                    witnesses TEXT,
+                    room TEXT,
+                    date DATE,
+                    time TIME,
+                    parties TEXT,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT NOW()
+                );
+            """))
+            conn.commit()
+        return jsonify({"status": "ok", "message": "schedule table created"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ------------------------------------------------
 # RUN
-# --------------------------------------
+# ------------------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
