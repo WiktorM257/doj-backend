@@ -1,18 +1,16 @@
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
 from contextlib import contextmanager
 import os
 
-# Database URL from environment
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    raise RuntimeError("❌ DATABASE_URL is not set in environment variables!")
+    raise RuntimeError("DATABASE_URL not set!")
 
-# Create SQLAlchemy engine
-engine: Engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+# SQLAlchemy engine
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
-# Connection manager
+
 @contextmanager
 def get_conn():
     conn = engine.connect()
@@ -23,7 +21,6 @@ def get_conn():
         conn.close()
 
 
-# Initialize database (can create tables)
 def init_db():
     with get_conn() as conn:
         conn.execute(text("""
@@ -64,5 +61,3 @@ def init_db():
                 created_at TIMESTAMP DEFAULT NOW()
             );
         """))
-
-    return True
