@@ -1,20 +1,31 @@
-import os
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from contextlib import contextmanager
+import os
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# Database URL from environment
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    raise Exception("DATABASE_URL is not set!")
+    raise RuntimeError("❌ DATABASE_URL is not set in environment variables!")
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20
-)
+# Create SQLAlchemy engine
+engine: Engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
+# Connection manager
+@contextmanager
+def get_conn():
+    conn = engine.connect()
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# Initialize database (can create tables)
 def init_db():
-    with engine.connect() as conn:
+    with get_conn() as conn:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS schedule (
                 id TEXT PRIMARY KEY,
@@ -25,10 +36,11 @@ def init_db():
                 lawyer TEXT,
                 witnesses TEXT,
                 room TEXT,
-                date TEXT,
-                time TEXT,
+                date DATE,
+                time TIME,
                 parties TEXT,
-                description TEXT
+                description TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
             );
         """))
 
@@ -42,15 +54,15 @@ def init_db():
                 lawyer TEXT,
                 witnesses TEXT,
                 room TEXT,
-                date TEXT,
-                time TEXT,
+                date DATE,
+                time TIME,
                 parties TEXT,
                 description TEXT,
                 result TEXT,
                 verdict TEXT,
-                document TEXT
+                document TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
             );
         """))
 
-def get_conn():
-    return engine.connect()
+    return True
