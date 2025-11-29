@@ -156,6 +156,20 @@ def create_tables():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.get("/debug-columns")
+def debug_columns():
+    try:
+        with get_conn() as conn:
+            result = conn.execute(text("""
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_name = 'schedule'
+                ORDER BY ordinal_position;
+            """)).fetchall()
+        return jsonify([dict(r) for r in result])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # --------------------------------------
 # RUN
