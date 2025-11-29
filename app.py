@@ -182,6 +182,29 @@ def force_create_schedule():
         return jsonify({"error": str(e)}), 500
 
 
+@app.get("/debug-columns")
+def debug_columns():
+    try:
+        with get_conn() as conn:
+            result = conn.execute(text("""
+                SELECT 
+                    column_name, 
+                    data_type 
+                FROM information_schema.columns
+                WHERE table_name = 'schedule'
+                ORDER BY ordinal_position;
+            """))
+            columns = []
+            for row in result:
+                columns.append({
+                    "column_name": row[0],
+                    "data_type": row[1]
+                })
+            return jsonify(columns)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ------------------------------------------------
 # RUN
 # ------------------------------------------------
